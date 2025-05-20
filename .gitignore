@@ -1,0 +1,44 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*/__pycache__/
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+
+# Environment files
+venv/
+env/
+.env/
+
+# Testing
+**/.pytest_cache/
+
+# AWS credentials & keys
+*.pem
+credentials
+
+# IDE / editor folders
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*/.vscode/
+**/.vscode/
+*/.idea/
+
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+
+# Python egg
+*.egg-info/
+
+# Generated reports
+scan_result.json
