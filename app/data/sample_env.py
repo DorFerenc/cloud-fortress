@@ -43,29 +43,102 @@ def setup_mock_s3_environment():
 
     Note: The `LocationConstraint` must match the `region_name` used when creating the S3 client.
     """
-    # Start the moto mock for S3.
     mock = mock_s3()
     mock.start()
-
-    # Create an S3 client to interact with the mocked S3 service.
     s3 = boto3.client('s3', region_name='us-west-1')
 
-    # Create a private bucket named 'private-bucket' in the 'us-west-1' region.
+    # === Create the log target bucket first ===
     s3.create_bucket(
-        Bucket='private-bucket',
+        Bucket='log-bucket',
         CreateBucketConfiguration={'LocationConstraint': 'us-west-1'}
     )
 
-    # Create a public bucket named 'public-bucket' in the 'us-west-1' region.
+    # Grant log delivery group permission
+    s3.put_bucket_acl(
+        Bucket='log-bucket',
+        AccessControlPolicy={
+            'Grants': [
+                {
+                    'Grantee': {
+                        'Type': 'Group',
+                        'URI': 'http://acs.amazonaws.com/groups/s3/LogDelivery'
+                    },
+                    'Permission': 'WRITE'
+                },
+                {
+                    'Grantee': {
+                        'Type': 'Group',
+                        'URI': 'http://acs.amazonaws.com/groups/s3/LogDelivery'
+                    },
+                    'Permission': 'READ_ACP'
+                }
+            ],
+            'Owner': s3.get_bucket_acl(Bucket='log-bucket')['Owner']
+        }
+    )
+
+    # === Bucket 1: Low Risk - All Secure ===
     s3.create_bucket(
-        Bucket='public-bucket',
+        Bucket='secure-bucket',
+        CreateBucketConfiguration={'LocationConstraint': 'us-west-1'}
+    )
+    s3.put_bucket_encryption(
+        Bucket='secure-bucket',
+        ServerSideEncryptionConfiguration={
+            'Rules': [{
+                'ApplyServerSideEncryptionByDefault': {
+                    'SSEAlgorithm': 'AES256'
+                }
+            }]
+        }
+    )
+    s3.put_bucket_logging(
+        Bucket='secure-bucket',
+        BucketLoggingStatus={
+            'LoggingEnabled': {
+                'TargetBucket': 'log-bucket',
+                'TargetPrefix': 'secure/'
+            }
+        }
+    )
+    s3.put_bucket_versioning(
+        Bucket='secure-bucket',
+        VersioningConfiguration={'Status': 'Enabled'}
+    )
+
+    # === Bucket 2: High Risk - Public + No Encryption ===
+    s3.create_bucket(
+        Bucket='public-unencrypted-bucket',
+        CreateBucketConfiguration={'LocationConstraint': 'us-west-1'}
+    )
+    s3.put_bucket_acl(Bucket='public-unencrypted-bucket', ACL='public-read')
+
+    # === Bucket 3: Medium Risk - No Logging + Suspended Versioning ===
+    s3.create_bucket(
+        Bucket='medium-risk-bucket',
+        CreateBucketConfiguration={'LocationConstraint': 'us-west-1'}
+    )
+    s3.put_bucket_encryption(
+        Bucket='medium-risk-bucket',
+        ServerSideEncryptionConfiguration={
+            'Rules': [{
+                'ApplyServerSideEncryptionByDefault': {
+                    'SSEAlgorithm': 'AES256'
+                }
+            }]
+        }
+    )
+    s3.put_bucket_versioning(
+        Bucket='medium-risk-bucket',
+        VersioningConfiguration={'Status': 'Suspended'}
+    )
+
+    # === Bucket 4: Unknown Configs ===
+    s3.create_bucket(
+        Bucket='unknown-config-bucket',
         CreateBucketConfiguration={'LocationConstraint': 'us-west-1'}
     )
 
-    # Set the ACL (Access Control List) of 'public-bucket' to public-read.
-    s3.put_bucket_acl(Bucket='public-bucket', ACL='public-read')
-
-    # Return the mock object so it can be stopped later.
     return mock
 
 def setup_mock_iam_environment():

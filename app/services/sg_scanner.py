@@ -1,5 +1,3 @@
-import boto3 # AWS SDK for Python to interact with AWS services.
-
 def scan_security_groups(get_ec2_client):
     findings = []
 

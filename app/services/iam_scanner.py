@@ -1,5 +1,3 @@
-import boto3  # AWS SDK for Python to interact with AWS services.
-
 def scan_iam_roles(iam_client):
     findings = []
 

@@ -1,6 +1,3 @@
-import re
-import boto3  # AWS SDK for Python to interact with AWS services.
-
 def scan_ec2_instances(ec2_client):
     findings = []
 

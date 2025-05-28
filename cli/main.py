@@ -39,34 +39,34 @@ logging.basicConfig(
 )
 
 def main(send=False):
-    print("[*] Setting up simulated environment...")
+    logging.info("[*] Setting up simulated environment...")
     mock_s3 = setup_mock_s3_environment()
     mock_iam = setup_mock_iam_environment()
     mock_ec2 = setup_mock_ec2_environment()
 
-    print("[*] Connecting to fake AWS...")
+    logging.info("[*] Connecting to fake AWS...")
     aws_clients = get_aws_clients()
 
-    print("[*] Scanning S3 buckets...")
+    logging.info("[*] Scanning S3 buckets...")
     s3_findings = scan_s3_buckets(aws_clients['s3'])
-    print("[*] Scanning IAM roles...")
+    logging.info("[*] Scanning IAM roles...")
     iam_findings = scan_iam_roles(aws_clients['iam'])
-    print("[*] Scanning EC2 instances...")
+    logging.info("[*] Scanning EC2 instances...")
     ec2_findings = scan_ec2_instances(aws_clients['ec2'])
-    print("[*] Scanning security groups...")
-    sg_findings = scan_security_groups(aws_clients['sg'])
+    logging.info("[*] Scanning security groups...")
+    sg_findings = scan_security_groups(aws_clients['ec2'])
 
     if PRODUCT_ID == "default-prod-id" or PROJECT_ID == "default-proj-id":
-        print("[!] WARNING: .env file not loaded or missing keys.")
+        logging.error("[!] ERROR: .env file not loaded or missing keys.")
 
-    print("[*] Generating report...")
+    logging.info("[*] Generating report...")
     generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUCT_ID, PROJECT_ID)
 
     if send:
-        print("[*] Sending report to dashboard...")
-        send_report(url=REPORT_URL )
+        logging.info("[*] Sending report to dashboard...")
+        send_report(url=REPORT_URL)
 
-    print("[*] Done.")
+    logging.info("[*] Done.")
     # Clean up all moto mocks
     mock_s3.stop()
     mock_iam.stop()

@@ -29,7 +29,7 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
     # ---------- S3 Findings ----------
     for s3_finding in s3_findings:
-        asset_id = generate_id("ass")
+        asset_id = generate_id("s3_asset")
         bucket_name = s3_finding["bucket_name"]
 
         report["assets"].append({
@@ -65,22 +65,59 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
                 "meta-name": "Logging",
                 "type": "S3 logging",
                 "desc": s3_finding.get("logging", "Unknown")
+            },
+             {
+                "asset-id": asset_id,
+                "meta-id": generate_id("meta"),
+                "meta-name": "Public Access ACL",
+                "type": "S3 access control",
+                "desc": "Public" if s3_finding.get("public_acl") else "Private"
+            },
+            {
+                "asset-id": asset_id,
+                "meta-id": generate_id("meta"),
+                "meta-name": "Public Policy",
+                "type": "S3 bucket policy",
+                "desc": "Public" if s3_finding.get("public_policy") else "Private"
+            },
+            {
+                "asset-id": asset_id,
+                "meta-id": generate_id("meta"),
+                "meta-name": "Policy Summary",
+                "type": "S3 bucket policy",
+                "desc": s3_finding.get("bucket_policy", "None")
+            },
+            {
+                "asset-id": asset_id,
+                "meta-id": generate_id("meta"),
+                "meta-name": "Risk Level",
+                "type": "Risk Assessment",
+                "desc": s3_finding.get("risk_level", "Unknown")
+            },
+            {
+                "asset-id": asset_id,
+                "meta-id": generate_id("meta"),
+                "meta-name": "Recommendation",
+                "type": "Remediation",
+                "desc": s3_finding.get("recommendation", "No recommendation available.")
             }
         ])
 
-        # Add alert if misconfigured
-        if s3_finding["risk_level"] == "High":
+
+        # Add alert if risk is Medium or High
+        if s3_finding.get("severity") in ["High", "Medium"]:
             report["alerts"].append({
                 "asset-id": asset_id,
-                "ip": "N/A",
-                "port": 443,
-                "host": f"{bucket_name}.s3.amazonaws.com",
+                "ip": f"{s3_finding.get('ip', 'N/A')} Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
+                "port": s3_finding.get("port", 443),
+                "host": s3_finding.get("host", f"{bucket_name}.s3.amazonaws.com"),
                 "alert_name": s3_finding["misconfiguration_type"],
-                "mitre_tactic": "Initial Access",
-                "mitre_technique": "Expose Storage to Internet (T1530)",
-                "severity": 4,
+                "mitre_tactic": s3_finding.get("mitre_tactic", "Unknown"),
+                "mitre_technique": s3_finding.get("mitre_technique", "Unknown"),
+                "severity": s3_finding.get("severity"),
                 "time": datetime.utcnow().isoformat() + "Z"
             })
+
 
 
      # ---------- IAM Findings ----------
