@@ -105,24 +105,23 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
 
         # Add alert if risk is Medium or High
-        if s3_finding.get("severity") in ["High", "Medium"]:
-            report["alerts"].append({
-                "asset-id": asset_id,
-                "ip": f"{s3_finding.get('ip', 'N/A')} Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
-                "port": s3_finding.get("port", 443),
-                "host": s3_finding.get("host", f"{bucket_name}.s3.amazonaws.com"),
-                "alert_name": s3_finding["misconfiguration_type"],
-                "mitre_tactic": s3_finding.get("mitre_tactic", "Unknown"),
-                "mitre_technique": s3_finding.get("mitre_technique", "Unknown"),
-                "severity": s3_finding.get("severity"),
-                "time": datetime.utcnow().isoformat() + "Z"
-            })
+        report["alerts"].append({
+            "asset-id": asset_id,
+            "ip": f"{s3_finding.get('ip', 'N/A')} Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
+            "port": s3_finding.get("port", 443),
+            "host": s3_finding.get("host", f"{bucket_name}.s3.amazonaws.com"),
+            "alert_name": s3_finding["misconfiguration_type"],
+            "mitre_tactic": s3_finding.get("mitre_tactic", "Unknown"),
+            "mitre_technique": s3_finding.get("mitre_technique", "Unknown"),
+            "severity": s3_finding.get("severity"),
+            "time": datetime.utcnow().isoformat() + "Z"
+        })
 
 
 
      # ---------- IAM Findings ----------
     for iam in iam_findings:
-        asset_id = generate_id("ass")
+        asset_id = generate_id("iam_asset")
         role_name = iam["role_name"]
 
         report["assets"].append({
@@ -136,13 +135,13 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
         report["alerts"].append({
             "asset-id": asset_id,
-            "ip": "N/A",
+            "ip": f"N/A Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
             "port": 0,
             "host": role_name,
             "alert_name": iam["risk"],
-            "mitre_tactic": "Privilege Escalation",
-            "mitre_technique": "Abuse of Overly Permissive Role (T1078)",
-            "severity": 5,
+            "mitre_tactic": iam["mitre_tactic"],
+            "mitre_technique": iam["mitre_technique"],
+            "severity": iam["severity"],
             "time": datetime.utcnow().isoformat() + "Z"
         })
 
@@ -203,76 +202,3 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
     print("[+] Report written to scan_result.json")
     return json.dumps(report, indent=4)
-
-
-# import json
-# from datetime import datetime
-# import uuid
-
-# def generate_report(s3_findings):
-#     def generate_id(prefix):
-#         return f"{prefix}-{uuid.uuid4().hex[:6]}"
-
-#     report = {
-#         "type": "cat",  # Added required field
-#         "agent_id": "agent-12345",  # Added required field
-#         "agent_name": "CNAPP-Agent",  # Added required field
-#         "agent_ip": "192.168.1.100",  # Added required field
-#         "productId": "prod-cnapp-lite",
-#         "product-details": {
-#             "color": "blue",
-#             "type": "cybersecurity",
-#             "name": "CNAPP-lite Scan",
-#             "team": "Student"
-#         },
-#         "projectId": "proj-aws-lab",
-#         "project-details": {
-#             "name": "AWS Corp",
-#             "desc": "corporate environment"
-#         },
-#         "assets": [],
-#         "meta-data": [],
-#         "alerts": []
-#     }
-
-#     for finding in s3_findings:
-#         asset_id = generate_id("ass")
-#         bucket_name = finding["bucket_name"]
-
-#         # Add to assets
-#         report["assets"].append({
-#             "asset-id": asset_id,
-#             "ip": "N/A",
-#             "name": bucket_name,
-#             "memory": "N/A",
-#             "category": "storage",
-#             "type": "S3 bucket"
-#         })
-
-#         # Add to meta-data (placeholder entry for now)
-#         report["meta-data"].append({
-#             "asset-id": asset_id,
-#             "meta-id": generate_id("meta"),
-#             "meta-name": f"{bucket_name} ACL",
-#             "type": "ACL",
-#             "desc": "Access control configuration of the bucket"
-#         })
-
-#         # Add alert if misconfigured
-#         if finding["risk_level"] == "High":
-#             report["alerts"].append({
-#                 "asset-id": asset_id,
-#                 "ip": "N/A",
-#                 "port": 443,
-#                 "host": f"{bucket_name}.s3.amazonaws.com",
-#                 "alert_name": finding["misconfiguration_type"],
-#                 "mitre_tactic": "Initial Access",
-#                 "mitre_technique": "Expose Storage to Internet (T1530)",
-#                 "severity": 4,
-#                 "time": datetime.utcnow().isoformat() + "Z"
-#             })
-
-#     with open("scan_result.json", "w") as f:
-#         json.dump(report, f, indent=4)
-
-#     print("[+] Report written to scan_result.json (updated schema)")
