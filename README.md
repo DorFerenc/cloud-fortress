@@ -21,7 +21,12 @@ python -m cli.main
 
 
 ### Usage
-
+0. **Create .env file:**
+   ```.env
+   PRODUCT_ID=
+   PROJECT_ID=
+   REPORT_URL
+   ```
 1. **Run with simulated AWS:**
 
    ```bash
