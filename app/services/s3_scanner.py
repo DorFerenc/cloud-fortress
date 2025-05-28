@@ -20,7 +20,7 @@ MISCONFIG_RULES = {
         "message": "Bucket has no encryption.",
         "score": 2,
         "tactic": "Defense Evasion",
-        "technique": "Disable Encryption (T1140)"
+        "technique": "No Encryption (custom)"
     },
     "no_logging": {
         "check": lambda log: log in ["Disabled", "Unknown"],
@@ -34,7 +34,7 @@ MISCONFIG_RULES = {
         "message": "Bucket versioning is not fully enabled.",
         "score": 1,
         "tactic": "Impact",
-        "technique": "Inhibit System Recovery (T1490)"
+        "technique": "Uncategorized S3 Risk"
     }
 }
 

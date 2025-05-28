@@ -148,37 +148,37 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
     # ---------- EC2 Findings ----------
     for ec2 in ec2_findings:
         instance_id = ec2["instance_id"]
-        asset_id = asset_map.get(instance_id, generate_id("ass"))
+        asset_id = asset_map.get(instance_id, generate_id("ec2_asset"))
 
         report["assets"].append({
             "asset-id": asset_id,
-            "ip": "192.168.1.10",
-            "name": instance_id,
-            "memory": "4GB",
+            "ip": "N/A",
+            "name": ec2["name"],
+            "memory": "N/A",
             "category": "compute",
-            "type": "EC2 instance"
+            "type": ec2["type"]
         })
 
         report["alerts"].append({
             "asset-id": asset_id,
-            "ip": "192.168.1.10",
+            "ip": "N/A Recommendation: " + ec2.get("recommendation", "No recommendation available."),
             "port": 0,
-            "host": f"{instance_id}.aws.local",
+            "host": f"{ec2['name']}.aws.local",
             "alert_name": ec2["risk"],
-            "mitre_tactic": "Defense Evasion",
-            "mitre_technique": "Expose Sensitive Data in User Data (T1552)",
-            "severity": 4,
+            "mitre_tactic": ec2["mitre_tactic"],
+            "mitre_technique": ec2["mitre_technique"],
+            "severity":ec2["severity"],
             "time": datetime.utcnow().isoformat() + "Z"
         })
 
     # ---------- SG Findings ----------
     for sg in sg_findings:
-        asset_id = generate_id("ass")
+        asset_id = generate_id("sg_asset")
 
         report["assets"].append({
             "asset-id": asset_id,
             "ip": "N/A",
-            "name": sg["group_name"],
+            "name": sg.get("group_name", "Unnamed"),
             "memory": "N/A",
             "category": "network",
             "type": "Security Group"
@@ -186,13 +186,13 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
         report["alerts"].append({
             "asset-id": asset_id,
-            "ip": sg["cidr"],
-            "port": sg["from_port"],
-            "host": sg["group_name"],
+            "ip": sg.get("cidr", "N/A"),
+            "port": int(sg.get("port_range", "0").split("-")[0]) if "-" in sg.get("port_range", "") else int(sg.get("port_range", 0)),
+            "host": sg.get("group_name", "Unnamed"),
             "alert_name": sg["risk"],
-            "mitre_tactic": "Initial Access",
-            "mitre_technique": "Exposed Service (T1133)",
-            "severity": 5 if sg["from_port"] in [22, 3389] else 3,
+            "mitre_tactic": sg.get("mitre_tactic", "Defense Evasion"),
+            "mitre_technique": sg.get("mitre_technique", "Uncategorized Security Group Misconfiguration"),
+            "severity": sg.get("severity", "Medium"),
             "time": datetime.utcnow().isoformat() + "Z"
         })
 
