@@ -6,21 +6,19 @@ import uuid
 def generate_id(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:6]}"
 
-def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings):
-    def generate_id(prefix):
-        return f"{prefix}-{uuid.uuid4().hex[:6]}"
+def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUCT_ID, PROJECT_ID):
     report = {
-        "type": "cat",  # Added required field
-        "agent_id": "agent-123451",  # Added required field
-        "agent_name": "CNAPP-Agent1",  # Added required field
-        "agent_ip": "192.168.1.101",  # Added required field
-        # "agent_ip": "127.0.0.1",  # Added required field
-        "projectID": "proj-cnapp-lite-001",
-        "details": {
-            "color": "blue",
-            "type": "cloud",
-            "name": "CNAPP-lite Scan",
-            "team": "Student"
+        "productId": PRODUCT_ID,
+        "product_details": {
+            "color": "blueish",
+            "type": "CNAPP lite",
+            "name": "Blue Team Initiative",
+            "team": "Delta"
+        },
+        "projectId": PROJECT_ID,
+        "project_details": {
+            "name": "Cloud Fortress",
+            "desc": "corporate environment"
         },
         "assets": [],
         "meta-data": [],
@@ -167,6 +165,7 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings):
         json.dump(report, file, indent=4)
 
     print("[+] Report written to scan_result.json")
+    return json.dumps(report, indent=4)
 
 
 # import json

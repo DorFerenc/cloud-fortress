@@ -17,6 +17,7 @@ git clone https://github.com/your-org/CloudFortress.git
 cd CloudFortress
 pip install -r requirements.txt
 python -m cli.main
+```
 
 
 ### Usage

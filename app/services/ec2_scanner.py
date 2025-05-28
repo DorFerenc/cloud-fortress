@@ -1,11 +1,10 @@
 import re
 import boto3  # AWS SDK for Python to interact with AWS services.
 
-def scan_ec2_instances():
-    ec2 = boto3.client('ec2', region_name='us-west-1')
+def scan_ec2_instances(ec2_client):
     findings = []
 
-    instances = ec2.describe_instances()['Reservations']
+    instances = ec2_client.describe_instances()['Reservations']
     for reservation in instances:
         for instance in reservation['Instances']:
             instance_id = instance['InstanceId']

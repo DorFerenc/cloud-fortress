@@ -12,6 +12,10 @@ __pycache__/
 venv/
 env/
 .env/
+.env
+/.env
+*.env
+
 
 # Testing
 **/.pytest_cache/

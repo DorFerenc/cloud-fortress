@@ -1,2 +1,3 @@
 boto3
 moto[ec2,s3,iam]==4.1.0
+python-dotenv

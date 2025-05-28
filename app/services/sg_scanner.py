@@ -1,10 +1,9 @@
 import boto3 # AWS SDK for Python to interact with AWS services.
 
-def scan_security_groups():
-    ec2 = boto3.client('ec2', region_name='us-west-1')
+def scan_security_groups(get_ec2_client):
     findings = []
 
-    groups = ec2.describe_security_groups()['SecurityGroups']
+    groups = get_ec2_client.describe_security_groups()['SecurityGroups']
 
     for sg in groups:
         group_id = sg['GroupId']
