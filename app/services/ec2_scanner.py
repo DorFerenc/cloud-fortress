@@ -1,3 +1,6 @@
+import logging
+
+
 def scan_ec2_instances(ec2_client):
     """
     Scans EC2 instances for misconfigurations and embedded risks.
@@ -30,6 +33,8 @@ def scan_ec2_instances(ec2_client):
         - risk description, recommendation, severity (Low/Medium/High)
         - mitre_tactic, mitre_technique
     """
+    logging.info("[*] Scanning EC2 instances...")
+
     findings = []
 
     reservations = ec2_client.describe_instances()['Reservations']

@@ -1,3 +1,6 @@
+import logging
+
+
 def scan_security_groups(ec2_client):
     """
     Scans AWS security groups for dangerous or overly permissive configurations.
@@ -12,6 +15,7 @@ def scan_security_groups(ec2_client):
     Returns:
         List of findings with details and MITRE context.
     """
+    logging.info("[*] Scanning security groups...")
     findings = []
     risky_ports = [22, 3389, 3306, 5432, 6379, 9200]
     rule_hash_map = {}  # group_id → rule hash

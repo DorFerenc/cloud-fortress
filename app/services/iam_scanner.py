@@ -1,3 +1,6 @@
+import logging
+
+
 def scan_iam_roles(iam_client):
     """
     Scans IAM roles for misconfigurations and security risks.
@@ -18,6 +21,7 @@ def scan_iam_roles(iam_client):
         - mitre_tactic: MITRE ATT&CK tactic associated with the risk.
         - mitre_technique: MITRE ATT&CK technique associated with the risk.
     """
+    logging.info("[*] Scanning IAM roles...")
     findings = []
 
     roles = iam_client.list_roles()['Roles']

@@ -65,6 +65,7 @@ def scan_s3_buckets(s3_client):
         - logging: Logging status
         - bucket_policy: Summary of bucket policy (if applicable)
     """
+    logging.info("[*] Scanning S3 buckets...")
     findings = []
 
     # Cache bucket details to avoid redundant API calls
