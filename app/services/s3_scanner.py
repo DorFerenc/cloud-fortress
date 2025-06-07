@@ -1,3 +1,27 @@
+"""
+s3_scanner.py
+
+This module scans all S3 buckets in the AWS account for common misconfigurations and security risks.
+
+What does it check?
+- Public access via ACLs (Access Control Lists)
+- Public access via bucket policies
+- Encryption status (server-side encryption)
+- Logging configuration
+- Versioning status
+
+What do you get after running it?
+- A list of findings for each bucket, including:
+    - The type and severity (1-5) of each misconfiguration
+    - MITRE ATT&CK tactic and technique mapping
+    - Human-readable recommendations for remediation
+
+Severity scale:
+    1 = Low risk, 5 = Critical risk
+
+This script is intended for blue team security reviews and cloud security posture management.
+"""
+
 import logging
 
 MISCONFIG_RULES = {
@@ -55,15 +79,18 @@ def scan_s3_buckets(s3_client):
     - Divides checks into sub-functions for modularity and readability.
 
     Returns:
-        List of findings, where each finding contains:
-        - bucket_name: Name of the bucket
-        - risk_level: High, Medium, or Low
-        - misconfiguration_type: Type of misconfiguration
-        - recommendation: Suggested remediation steps
-        - encryption: Encryption status
-        - versioning: Versioning status
-        - logging: Logging status
-        - bucket_policy: Summary of bucket policy (if applicable)
+        List of findings, each with:
+            - bucket_name
+            - risk_level (High, Medium, Low)
+            - misconfiguration_type
+            - recommendation
+            - encryption
+            - versioning
+            - logging
+            - bucket_policy
+            - severity (1-5)
+            - mitre_tactic
+            - mitre_technique
     """
     logging.info("[*] Scanning S3 buckets...")
     findings = []
@@ -143,6 +170,7 @@ def check_public_acl(s3_client, bucket_name):
             for grant in acl.get('Grants', [])
         )
     except Exception:
+        logging.debug(f"Could not get ACL for bucket {bucket_name}")
         return False
 
 
@@ -167,6 +195,7 @@ def check_public_policy(s3_client, bucket_name):
         is_public_policy = '"Effect":"Allow"' in policy_document and '"Principal":"*"' in policy_document
         return is_public_policy, policy_document
     except Exception:
+        logging.debug(f"Could not get policy for bucket {bucket_name}")
         return False, None
 
 
@@ -189,6 +218,7 @@ def check_encryption(s3_client, bucket_name):
         encryption = s3_client.get_bucket_encryption(Bucket=bucket_name)
         return encryption['ServerSideEncryptionConfiguration']['Rules'][0]['ApplyServerSideEncryptionByDefault']['SSEAlgorithm']
     except Exception:
+        logging.debug(f"Could not get encryption for bucket {bucket_name}")
         return "None"
 
 
@@ -212,6 +242,7 @@ def check_versioning(s3_client, bucket_name):
         versioning = s3_client.get_bucket_versioning(Bucket=bucket_name)
         return versioning.get('Status', 'Disabled')
     except Exception:
+        logging.debug(f"Could not get versioning for bucket {bucket_name}")
         return "Unknown"
 
 
@@ -235,7 +266,9 @@ def check_logging(s3_client, bucket_name):
         logging_config = s3_client.get_bucket_logging(Bucket=bucket_name)
         return "Enabled" if 'LoggingEnabled' in logging_config else "Disabled"
     except Exception:
+        logging.debug(f"Could not get logging for bucket {bucket_name}")
         return "Unknown"
+
 
 def determine_risk_level(public_acl, public_policy, encryption_status, logging_status, versioning_status):
     """
@@ -264,21 +297,30 @@ def determine_risk_level(public_acl, public_policy, encryption_status, logging_s
             if matched_mitre is None:
                 matched_mitre = (rule["tactic"], rule["technique"])
 
-    if risk_score >= 6:
+    # Map risk_score to severity (1-5)
+    if risk_score >= 7:
         risk_level = "High"
+        severity = 5
+    elif risk_score >= 5:
+        risk_level = "Medium"
+        severity = 4
     elif risk_score >= 3:
         risk_level = "Medium"
+        severity = 3
+    elif risk_score >= 1:
+        risk_level = "Low"
+        severity = 2
     else:
         risk_level = "Low"
+        severity = 1
 
     misconfiguration_type = "; ".join(issues) if issues else "No significant issues"
     recommendation = generate_recommendation(public_acl, public_policy, encryption_status, logging_status, versioning_status)
-    # severity = {"High": 4, "Medium": 3, "Low": 2}.get(risk_level, 1)
-    severity = risk_level
 
     mitre_tactic, mitre_technique = matched_mitre or ("Impact", "Uncategorized S3 Risk")
 
     return risk_level, misconfiguration_type, recommendation, severity, mitre_tactic, mitre_technique
+
 
 def generate_recommendation(public_acl, public_policy, encryption_status, logging_status, versioning_status):
     """

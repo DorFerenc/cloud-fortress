@@ -17,25 +17,42 @@ def scan_iam_roles(iam_client):
         - policy_name: Name of the attached policy.
         - risks: List of security issues detected.
         - recommendations: List of suggested remediation steps.
-        - severity: Overall risk severity (Low, Medium, High).
+        - severity: Overall risk severity (1-5).
         - mitre_tactic: MITRE ATT&CK tactic associated with the risk.
         - mitre_technique: MITRE ATT&CK technique associated with the risk.
     """
     logging.info("[*] Scanning IAM roles...")
     findings = []
 
-    roles = iam_client.list_roles()['Roles']
+    try:
+        roles = iam_client.list_roles()['Roles']
+        logging.info(f"[*] Found {len(roles)} IAM roles.")
+    except Exception as e:
+        logging.error(f"[!] Failed to list IAM roles: {e}")
+        return findings
+
     for role in roles:
         role_name = role['RoleName']
-        policies = iam_client.list_role_policies(RoleName=role_name)['PolicyNames']
+        try:
+            policies = iam_client.list_role_policies(RoleName=role_name)['PolicyNames']
+            logging.info(f"[*] Role '{role_name}' has {len(policies)} inline policies.")
+        except Exception as e:
+            logging.error(f"[!] Failed to list policies for role '{role_name}': {e}")
+            continue
 
         for policy_name in policies:
-            policy = iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
-            statements = policy['PolicyDocument']['Statement']
+            try:
+                policy = iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)
+                statements = policy['PolicyDocument']['Statement']
+                logging.debug(f"[*] Analyzing policy '{policy_name}' for role '{role_name}'.")
+            except Exception as e:
+                logging.error(f"[!] Failed to get policy '{policy_name}' for role '{role_name}': {e}")
+                continue
 
             # Analyze policy statements
             role_findings = analyze_policy_statements(role_name, policy_name, statements, role)
             if role_findings:
+                logging.info(f"[!] Findings for role '{role_name}', policy '{policy_name}': {role_findings['risk']}")
                 findings.append(role_findings)
 
     return findings
@@ -51,13 +68,13 @@ def analyze_policy_statements(role_name, policy_name, statements, role):
         - policy_name: Name of the attached policy.
         - risks: List of security issues detected.
         - recommendations: List of suggested remediation steps.
-        - severity: Overall risk severity (Low, Medium, High).
+        - severity: Overall risk severity (1-5).
         - mitre_tactic: MITRE ATT&CK tactic associated with the risk.
         - mitre_technique: MITRE ATT&CK technique associated with the risk.
     """
     risks = []
     recommendations = []
-    severity = "Low"  # Default severity
+    severity = 1  # Default severity (1 = Low, 5 = Critical)
     mitre_tactic = []
     mitre_technique = []
 
@@ -66,41 +83,46 @@ def analyze_policy_statements(role_name, policy_name, statements, role):
         if check_wildcard_actions(stmt):
             risks.append("Wildcard IAM policy")
             recommendations.append("Restrict actions to least privilege")
-            severity = update_severity(severity, "High")
+            severity = update_severity(severity, 5)
             mitre_tactic.append("Privilege Escalation")
             mitre_technique.append("Exploitation for Privilege Escalation (T1068)")
+            logging.warning(f"[!] Wildcard action detected in policy '{policy_name}' for role '{role_name}'.")
 
         # Check for overly permissive resources
         if check_wildcard_resources(stmt):
             risks.append("Wildcard resource access")
             recommendations.append("Restrict resource access to specific resources")
-            severity = update_severity(severity, "High")
+            severity = update_severity(severity, 5)
             mitre_tactic.append("Privilege Escalation")
             mitre_technique.append("Exploitation for Privilege Escalation (T1068)")
+            logging.warning(f"[!] Wildcard resource detected in policy '{policy_name}' for role '{role_name}'.")
 
         # Check for missing MFA enforcement
         if check_missing_mfa(stmt):
             risks.append("Missing MFA enforcement")
             recommendations.append("Add MFA enforcement to IAM policies")
-            severity = update_severity(severity, "Medium")
+            severity = update_severity(severity, 3)
             mitre_tactic.append("Access Control")
             mitre_technique.append("Modify Authentication Process: Disable or Modify MFA (T1556.006)")
+            logging.info(f"[*] Missing MFA enforcement in policy '{policy_name}' for role '{role_name}'.")
 
         # Check for privilege escalation risks
         if check_privilege_escalation(stmt):
             risks.append("Privilege escalation via iam:PassRole")
             recommendations.append("Restrict iam:PassRole to specific roles")
-            severity = update_severity(severity, "High")
+            severity = update_severity(severity, 5)
             mitre_tactic.append("Privilege Escalation")
             mitre_technique.append("Account Manipulation: Cloud Accounts (T1098.003)")
+            logging.warning(f"[!] Privilege escalation risk (iam:PassRole) in policy '{policy_name}' for role '{role_name}'.")
 
     # Check for unused roles
     if check_unused_roles(role):
         risks.append("Unused IAM role")
         recommendations.append("Remove unused IAM roles to reduce attack surface")
-        severity = update_severity(severity, "Low")
+        severity = update_severity(severity, 2)
         mitre_tactic.append("Account Management")
         mitre_technique.append("Account Access Removal (T1531)")
+        logging.info(f"[*] Unused IAM role detected: '{role_name}'.")
 
     if risks:
         return {
@@ -167,7 +189,6 @@ def check_unused_roles(role):
 def update_severity(current_severity, new_severity):
     """
     Updates the overall severity based on the new severity level.
-    Severity levels: Low < Medium < High.
+    Severity levels: 1 (Low) < 2 < 3 < 4 < 5 (Critical).
     """
-    severity_levels = {"Low": 1, "Medium": 2, "High": 3}
-    return new_severity if severity_levels[new_severity] > severity_levels[current_severity] else current_severity
+    return max(current_severity, new_severity)

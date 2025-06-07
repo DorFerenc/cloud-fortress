@@ -1,4 +1,4 @@
- # Creates output compatible with frontend
+# Creates output compatible with frontend
 import json
 from datetime import datetime
 import uuid
@@ -6,7 +6,129 @@ import uuid
 def generate_id(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:6]}"
 
+def build_asset(asset_id, name, category, type_, ip="N/A", memory="N/A"):
+    return {
+        "asset-id": asset_id,
+        "ip": ip,
+        "name": name,
+        "memory": memory,
+        "category": category,
+        "type": type_
+    }
+
+def build_meta(asset_id, meta_name, meta_type, desc):
+    return {
+        "asset-id": asset_id,
+        "meta-id": generate_id("meta"),
+        "meta-name": meta_name,
+        "type": meta_type,
+        "desc": desc
+    }
+
+def build_alert(asset_id, ip, port, host, alert_name, mitre_tactic, mitre_technique, severity, time):
+    return {
+        "asset-id": asset_id,
+        "ip": ip,
+        "port": port,
+        "host": host,
+        "alert_name": alert_name,
+        "mitre_tactic": mitre_tactic,
+        "mitre_technique": mitre_technique,
+        "severity": severity,
+        "time": time
+    }
+
+def process_s3_findings(s3_findings, asset_map):
+    assets, meta_data, alerts = [], [], []
+    for s3_finding in s3_findings:
+        asset_id = generate_id("s3_asset")
+        bucket_name = s3_finding["bucket_name"]
+        assets.append(build_asset(asset_id, bucket_name, "storage", "S3 Bucket"))
+        asset_map[bucket_name] = asset_id
+
+        meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", s3_finding.get("severity", "Unknown")))
+        meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", s3_finding.get("recommendation", "No recommendation available.")))
+
+        alerts.append(build_alert(
+            asset_id=asset_id,
+            ip=f"{s3_finding.get('ip', 'N/A')} Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
+            port=s3_finding.get("port", 443),
+            host=s3_finding.get("host", f"{bucket_name}.s3.amazonaws.com"),
+            alert_name=s3_finding["misconfiguration_type"],
+            mitre_tactic=s3_finding.get("mitre_tactic", "Unknown"),
+            mitre_technique=s3_finding.get("mitre_technique", "Unknown"),
+            severity=s3_finding.get("severity"),
+            time=datetime.utcnow().isoformat()
+        ))
+    return assets, meta_data, alerts
+
+def process_iam_findings(iam_findings):
+    assets, meta_data, alerts = [], [], []
+    for iam in iam_findings:
+        asset_id = generate_id("iam_asset")
+        role_name = iam["role_name"]
+        assets.append(build_asset(asset_id, role_name, "identity", "IAM role"))
+
+        meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", iam.get("severity", "Unknown")))
+        meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", iam.get("recommendation", "No recommendation available.")))
+
+        alerts.append(build_alert(
+            asset_id=asset_id,
+            ip= f"N/A Recommendation: {iam.get('recommendation', 'No recommendation available.')}",
+            port=0,
+            host=role_name,
+            alert_name=iam["risk"],
+            mitre_tactic=iam["mitre_tactic"],
+            mitre_technique=iam["mitre_technique"],
+            severity=iam["severity"],
+            time=datetime.utcnow().isoformat()
+        ))
+    return assets, meta_data, alerts
+
+def process_ec2_findings(ec2_findings, asset_map):
+    assets, alerts = [], []
+    for ec2 in ec2_findings:
+        instance_id = ec2["instance_id"]
+        asset_id = asset_map.get(instance_id, generate_id("ec2_asset"))
+        assets.append(build_asset(asset_id, ec2["name"], "compute", ec2["type"]))
+        alerts.append(build_alert(
+            asset_id=asset_id,
+            ip="N/A Recommendation: " + ec2.get("recommendation", "No recommendation available."),
+            port=0,
+            host=f"{ec2['name']}.aws.local",
+            alert_name=ec2["risk"],
+            mitre_tactic=ec2["mitre_tactic"],
+            mitre_technique=ec2["mitre_technique"],
+            severity=ec2["severity"],
+            time=datetime.utcnow().isoformat()
+        ))
+    return assets, alerts
+
+def process_sg_findings(sg_findings):
+    assets, alerts = [], []
+    for sg in sg_findings:
+        asset_id = generate_id("sg_asset")
+        group_name = sg.get("group_name", "Unnamed")
+        assets.append(build_asset(asset_id, group_name, "network", "Security Group"))
+        port_range = sg.get("port_range", "0")
+        port = int(port_range.split("-")[0]) if "-" in port_range else int(port_range)
+        alerts.append(build_alert(
+            asset_id=asset_id,
+            ip=sg.get("cidr", "N/A"),
+            port=port,
+            host=group_name,
+            alert_name=sg["risk"],
+            mitre_tactic=sg.get("mitre_tactic", "Defense Evasion"),
+            mitre_technique=sg.get("mitre_technique", "Uncategorized Security Group Misconfiguration"),
+            severity=sg.get("severity", "Medium"),
+            time=datetime.utcnow().isoformat()
+        ))
+    return assets, alerts
+
 def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUCT_ID, PROJECT_ID):
+    """
+    Build a structured report for the frontend from findings.
+    """
     report = {
         "productId": PRODUCT_ID,
         "product_details": {
@@ -27,176 +149,28 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
 
     asset_map = {}
 
-    # ---------- S3 Findings ----------
-    for s3_finding in s3_findings:
-        asset_id = generate_id("s3_asset")
-        bucket_name = s3_finding["bucket_name"]
+    # S3
+    s3_assets, s3_meta, s3_alerts = process_s3_findings(s3_findings, asset_map)
+    report["assets"].extend(s3_assets)
+    report["meta-data"].extend(s3_meta)
+    report["alerts"].extend(s3_alerts)
 
-        report["assets"].append({
-            "asset-id": asset_id,
-            "ip": "N/A",
-            "name": bucket_name,
-            "memory": "N/A",
-            "category": "storage",
-            "type": "S3 Bucket"
-        })
+    # IAM
+    iam_assets, iam_meta, iam_alerts = process_iam_findings(iam_findings)
+    report["assets"].extend(iam_assets)
+    report["meta-data"].extend(iam_meta)
+    report["alerts"].extend(iam_alerts)
 
-        asset_map[bucket_name] = asset_id
+    # EC2
+    ec2_assets, ec2_alerts = process_ec2_findings(ec2_findings, asset_map)
+    report["assets"].extend(ec2_assets)
+    report["alerts"].extend(ec2_alerts)
 
-        # Add to meta-data with real S3 config
-        report["meta-data"].extend([
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Encryption",
-                "type": "S3 encryption",
-                "desc": s3_finding.get("encryption", "Unknown")
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Versioning",
-                "type": "S3 versioning",
-                "desc": s3_finding.get("versioning", "Unknown")
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Logging",
-                "type": "S3 logging",
-                "desc": s3_finding.get("logging", "Unknown")
-            },
-             {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Public Access ACL",
-                "type": "S3 access control",
-                "desc": "Public" if s3_finding.get("public_acl") else "Private"
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Public Policy",
-                "type": "S3 bucket policy",
-                "desc": "Public" if s3_finding.get("public_policy") else "Private"
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Policy Summary",
-                "type": "S3 bucket policy",
-                "desc": s3_finding.get("bucket_policy", "None")
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Risk Level",
-                "type": "Risk Assessment",
-                "desc": s3_finding.get("risk_level", "Unknown")
-            },
-            {
-                "asset-id": asset_id,
-                "meta-id": generate_id("meta"),
-                "meta-name": "Recommendation",
-                "type": "Remediation",
-                "desc": s3_finding.get("recommendation", "No recommendation available.")
-            }
-        ])
+    # SG
+    sg_assets, sg_alerts = process_sg_findings(sg_findings)
+    report["assets"].extend(sg_assets)
+    report["alerts"].extend(sg_alerts)
 
-
-        # Add alert if risk is Medium or High
-        report["alerts"].append({
-            "asset-id": asset_id,
-            "ip": f"{s3_finding.get('ip', 'N/A')} Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
-            "port": s3_finding.get("port", 443),
-            "host": s3_finding.get("host", f"{bucket_name}.s3.amazonaws.com"),
-            "alert_name": s3_finding["misconfiguration_type"],
-            "mitre_tactic": s3_finding.get("mitre_tactic", "Unknown"),
-            "mitre_technique": s3_finding.get("mitre_technique", "Unknown"),
-            "severity": s3_finding.get("severity"),
-            "time": datetime.utcnow().isoformat() + "Z"
-        })
-
-
-
-     # ---------- IAM Findings ----------
-    for iam in iam_findings:
-        asset_id = generate_id("iam_asset")
-        role_name = iam["role_name"]
-
-        report["assets"].append({
-            "asset-id": asset_id,
-            "ip": "N/A",
-            "name": role_name,
-            "memory": "N/A",
-            "category": "identity",
-            "type": "IAM role"
-        })
-
-        report["alerts"].append({
-            "asset-id": asset_id,
-            "ip": f"N/A Recommendation: {s3_finding.get('recommendation', 'No recommendation available.')}",
-            "port": 0,
-            "host": role_name,
-            "alert_name": iam["risk"],
-            "mitre_tactic": iam["mitre_tactic"],
-            "mitre_technique": iam["mitre_technique"],
-            "severity": iam["severity"],
-            "time": datetime.utcnow().isoformat() + "Z"
-        })
-
-    # ---------- EC2 Findings ----------
-    for ec2 in ec2_findings:
-        instance_id = ec2["instance_id"]
-        asset_id = asset_map.get(instance_id, generate_id("ec2_asset"))
-
-        report["assets"].append({
-            "asset-id": asset_id,
-            "ip": "N/A",
-            "name": ec2["name"],
-            "memory": "N/A",
-            "category": "compute",
-            "type": ec2["type"]
-        })
-
-        report["alerts"].append({
-            "asset-id": asset_id,
-            "ip": "N/A Recommendation: " + ec2.get("recommendation", "No recommendation available."),
-            "port": 0,
-            "host": f"{ec2['name']}.aws.local",
-            "alert_name": ec2["risk"],
-            "mitre_tactic": ec2["mitre_tactic"],
-            "mitre_technique": ec2["mitre_technique"],
-            "severity":ec2["severity"],
-            "time": datetime.utcnow().isoformat() + "Z"
-        })
-
-    # ---------- SG Findings ----------
-    for sg in sg_findings:
-        asset_id = generate_id("sg_asset")
-
-        report["assets"].append({
-            "asset-id": asset_id,
-            "ip": "N/A",
-            "name": sg.get("group_name", "Unnamed"),
-            "memory": "N/A",
-            "category": "network",
-            "type": "Security Group"
-        })
-
-        report["alerts"].append({
-            "asset-id": asset_id,
-            "ip": sg.get("cidr", "N/A"),
-            "port": int(sg.get("port_range", "0").split("-")[0]) if "-" in sg.get("port_range", "") else int(sg.get("port_range", 0)),
-            "host": sg.get("group_name", "Unnamed"),
-            "alert_name": sg["risk"],
-            "mitre_tactic": sg.get("mitre_tactic", "Defense Evasion"),
-            "mitre_technique": sg.get("mitre_technique", "Uncategorized Security Group Misconfiguration"),
-            "severity": sg.get("severity", "Medium"),
-            "time": datetime.utcnow().isoformat() + "Z"
-        })
-
-    # ---------- Write JSON ----------
     with open("scan_result.json", "w") as file:
         json.dump(report, file, indent=4)
 

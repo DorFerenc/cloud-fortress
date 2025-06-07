@@ -30,14 +30,20 @@ def scan_ec2_instances(ec2_client):
     Returns:
         A list of findings per instance, each containing:
         - instance_id, ip, name, type, memory
-        - risk description, recommendation, severity (Low/Medium/High)
+        - risk description, recommendation, severity (1-5)
         - mitre_tactic, mitre_technique
     """
     logging.info("[*] Scanning EC2 instances...")
 
     findings = []
 
-    reservations = ec2_client.describe_instances()['Reservations']
+    try:
+        reservations = ec2_client.describe_instances()['Reservations']
+        logging.info(f"Found {sum(len(r['Instances']) for r in reservations)} EC2 instances.")
+    except Exception as e:
+        logging.error(f"Failed to describe EC2 instances: {e}")
+        return findings
+
     for reservation in reservations:
         for instance in reservation['Instances']:
             instance_id = instance['InstanceId']
@@ -69,29 +75,34 @@ def scan_ec2_instances(ec2_client):
                             **meta,
                             "risk": "Secrets exposed in EC2 user data",
                             "recommendation": "Never store credentials in user data. Use IAM roles or AWS Secrets Manager.",
-                            "severity": "High",
+                            "severity": 5,
                             "mitre_tactic": "Defense Evasion",
                             "mitre_technique": "Expose Sensitive Data in User Data (T1552.001)"
                         })
-            except Exception:
-                pass  # User data inaccessible (possible permissions)
+                        logging.warning(f"Secrets found in user data for instance {instance_id}")
+            except Exception as e:
+                logging.debug(f"Could not access user data for instance {instance_id}: {e}")
 
             # 2. Check security groups for open SSH
             for sg in instance['SecurityGroups']:
                 sg_id = sg['GroupId']
-                sg_details = ec2_client.describe_security_groups(GroupIds=[sg_id])['SecurityGroups'][0]
-                for rule in sg_details.get('IpPermissions', []):
-                    from_ports = rule.get('FromPort')
-                    ip_ranges = rule.get('IpRanges', [])
-                    if from_ports == 22 and any(r.get('CidrIp') == '0.0.0.0/0' for r in ip_ranges):
-                        findings.append({
-                            **meta,
-                            "risk": "SSH port (22) open to the world",
-                            "recommendation": "Restrict SSH access to specific IP ranges (e.g., VPN or office IPs)",
-                            "severity": "Medium",
-                            "mitre_tactic": "Initial Access",
-                            "mitre_technique": "Exploit Public-Facing Application (T1190)"
-                        })
+                try:
+                    sg_details = ec2_client.describe_security_groups(GroupIds=[sg_id])['SecurityGroups'][0]
+                    for rule in sg_details.get('IpPermissions', []):
+                        from_ports = rule.get('FromPort')
+                        ip_ranges = rule.get('IpRanges', [])
+                        if from_ports == 22 and any(r.get('CidrIp') == '0.0.0.0/0' for r in ip_ranges):
+                            findings.append({
+                                **meta,
+                                "risk": "SSH port (22) open to the world",
+                                "recommendation": "Restrict SSH access to specific IP ranges (e.g., VPN or office IPs)",
+                                "severity": 4,
+                                "mitre_tactic": "Initial Access",
+                                "mitre_technique": "Exploit Public-Facing Application (T1190)"
+                            })
+                            logging.warning(f"SSH open to world for instance {instance_id} (SG: {sg_id})")
+                except Exception as e:
+                    logging.debug(f"Could not check security group {sg_id} for instance {instance_id}: {e}")
 
             # 3. Check for IMDSv1 (Metadata API v1)
             metadata_options = instance.get('MetadataOptions', {})
@@ -100,9 +111,11 @@ def scan_ec2_instances(ec2_client):
                     **meta,
                     "risk": "IMDSv1 enabled (token not required)",
                     "recommendation": "Set HttpTokens=required to enforce IMDSv2 and block SSRF metadata leaks",
-                    "severity": "Medium",
+                    "severity": 3,
                     "mitre_tactic": "Credential Access",
                     "mitre_technique": "Cloud Instance Metadata API (T1522)"
                 })
+                logging.warning(f"IMDSv1 enabled for instance {instance_id}")
 
+    logging.info("Finished scanning EC2 instances.")
     return findings
