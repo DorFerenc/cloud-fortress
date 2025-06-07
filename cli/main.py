@@ -55,14 +55,14 @@ def main(send=False, mode="mock", build=False):
                 logging.info("[*] Connecting to real AWS environment...")
 
         # get real or mock clients
-        aws_clients = get_aws_clients(os.getenv("AWS_DEFAULT_REGION"))
+        aws_clients = get_aws_clients(os.getenv("AWS_DEFAULT_REGION"),mode)
 
         if mode == "real" and build:
             build_demo_resources(aws_clients)
 
         # --- your scanning steps ---
         s3_findings  = scan_s3_buckets(aws_clients['s3'])
-        iam_findings = scan_iam_roles(  aws_clients['iam'])
+        iam_findings = scan_iam_roles(aws_clients['iam'])
         ec2_findings = scan_ec2_instances(aws_clients['ec2'])
         sg_findings  = scan_security_groups(aws_clients['ec2'])
 
@@ -70,7 +70,7 @@ def main(send=False, mode="mock", build=False):
             logging.error("[!] ERROR: .env file not loaded or missing keys.")
 
         logging.info("[*] Generating report...")
-        generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUCT_ID, PROJECT_ID)
+        generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, aws_clients['username'], PRODUCT_ID, PROJECT_ID)
 
         if send:
             logging.info("[*] Sending report to dashboard...")

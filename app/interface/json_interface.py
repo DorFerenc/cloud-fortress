@@ -38,7 +38,7 @@ def build_alert(asset_id, ip, port, host, alert_name, mitre_tactic, mitre_techni
         "time": time
     }
 
-def process_s3_findings(s3_findings, asset_map):
+def process_s3_findings(s3_findings, asset_map, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for s3_finding in s3_findings:
         asset_id = generate_id("s3_asset")
@@ -46,6 +46,7 @@ def process_s3_findings(s3_findings, asset_map):
         assets.append(build_asset(asset_id, bucket_name, "storage", "S3 Bucket"))
         asset_map[bucket_name] = asset_id
 
+        meta_data.append(build_meta(asset_id, "User", "User", username))
         meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", s3_finding.get("severity", "Unknown")))
         meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", s3_finding.get("recommendation", "No recommendation available.")))
 
@@ -62,13 +63,14 @@ def process_s3_findings(s3_findings, asset_map):
         ))
     return assets, meta_data, alerts
 
-def process_iam_findings(iam_findings):
+def process_iam_findings(iam_findings, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for iam in iam_findings:
         asset_id = generate_id("iam_asset")
         role_name = iam["role_name"]
         assets.append(build_asset(asset_id, role_name, "identity", "IAM role"))
 
+        meta_data.append(build_meta(asset_id, "User", "User", username))
         meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", iam.get("severity", "Unknown")))
         meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", iam.get("recommendation", "No recommendation available.")))
 
@@ -85,12 +87,17 @@ def process_iam_findings(iam_findings):
         ))
     return assets, meta_data, alerts
 
-def process_ec2_findings(ec2_findings, asset_map):
-    assets, alerts = [], []
+def process_ec2_findings(ec2_findings, asset_map, username="Unknown"):
+    assets, meta_data, alerts = [], [], []
     for ec2 in ec2_findings:
         instance_id = ec2["instance_id"]
         asset_id = asset_map.get(instance_id, generate_id("ec2_asset"))
         assets.append(build_asset(asset_id, ec2["name"], "compute", ec2["type"]))
+
+        meta_data.append(build_meta(asset_id, "User", "User", username))
+        meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", ec2.get("severity", "Unknown")))
+        meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", ec2.get("recommendation", "No recommendation available.")))
+
         alerts.append(build_alert(
             asset_id=asset_id,
             ip="N/A Recommendation: " + ec2.get("recommendation", "No recommendation available."),
@@ -102,14 +109,20 @@ def process_ec2_findings(ec2_findings, asset_map):
             severity=ec2["severity"],
             time=datetime.utcnow().isoformat()
         ))
-    return assets, alerts
+    return assets, meta_data, alerts
 
-def process_sg_findings(sg_findings):
-    assets, alerts = [], []
+def process_sg_findings(sg_findings, username="Unknown"):
+    assets, meta_data, alerts = [], [], []
     for sg in sg_findings:
         asset_id = generate_id("sg_asset")
         group_name = sg.get("group_name", "Unnamed")
         assets.append(build_asset(asset_id, group_name, "network", "Security Group"))
+
+        meta_data.append(build_meta(asset_id, "User", "User", username))
+        meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", sg.get("severity", "Unknown")))
+        meta_data.append(build_meta(asset_id, "Recommendation", "Recommendation", sg.get("recommendation", "No recommendation available.")))
+
+
         port_range = sg.get("port_range", "0")
         port = int(port_range.split("-")[0]) if "-" in port_range else int(port_range)
         alerts.append(build_alert(
@@ -123,9 +136,9 @@ def process_sg_findings(sg_findings):
             severity=sg.get("severity", "Medium"),
             time=datetime.utcnow().isoformat()
         ))
-    return assets, alerts
+    return assets, meta_data, alerts
 
-def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUCT_ID, PROJECT_ID):
+def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, username, PRODUCT_ID, PROJECT_ID):
     """
     Build a structured report for the frontend from findings.
     """
@@ -134,7 +147,7 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
         "product_details": {
             "color": "blueish",
             "type": "CNAPP lite",
-            "name": "Blue Team Initiative",
+            "name": f"report for user {username}",
             "team": "Delta"
         },
         "projectId": PROJECT_ID,
@@ -150,25 +163,27 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, PRODUC
     asset_map = {}
 
     # S3
-    s3_assets, s3_meta, s3_alerts = process_s3_findings(s3_findings, asset_map)
+    s3_assets, s3_meta, s3_alerts = process_s3_findings(s3_findings, asset_map, username)
     report["assets"].extend(s3_assets)
     report["meta-data"].extend(s3_meta)
     report["alerts"].extend(s3_alerts)
 
     # IAM
-    iam_assets, iam_meta, iam_alerts = process_iam_findings(iam_findings)
+    iam_assets, iam_meta, iam_alerts = process_iam_findings(iam_findings, username)
     report["assets"].extend(iam_assets)
     report["meta-data"].extend(iam_meta)
     report["alerts"].extend(iam_alerts)
 
     # EC2
-    ec2_assets, ec2_alerts = process_ec2_findings(ec2_findings, asset_map)
+    ec2_assets, ec2_meta, ec2_alerts = process_ec2_findings(ec2_findings, asset_map, username)
     report["assets"].extend(ec2_assets)
+    report["meta-data"].extend(ec2_meta)
     report["alerts"].extend(ec2_alerts)
 
     # SG
-    sg_assets, sg_alerts = process_sg_findings(sg_findings)
+    sg_assets, sg_meta, sg_alerts = process_sg_findings(sg_findings, username)
     report["assets"].extend(sg_assets)
+    report["meta-data"].extend(sg_meta)
     report["alerts"].extend(sg_alerts)
 
     with open("scan_result.json", "w") as file:
