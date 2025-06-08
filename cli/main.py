@@ -20,7 +20,7 @@ from app.interface.json_interface import generate_report
 from app.core.aws_build_scenario import build_demo_resources
 
 # Diff & send imports
-from cli.diff_report import load_report, build_diff_payload
+from cli.diff_report import build_partial_report, load_report, build_diff_payload
 from cli.send_report import send_report, send_report_diff
 
 
@@ -28,6 +28,7 @@ from cli.send_report import send_report, send_report_diff
 LAST_SCAN_FILE = "last_scan-"
 CURRENT_SCAN_FILE = "current_scan-"
 CURRENT_DELTA_SCAN_FILE = "current_delta_scan_results-"
+CURRENT_PARTIAL_SCAN_FILE = "current_partial_delta_scan_results-"
 
 # load env before boto3 ever runs
 # load_dotenv('cloudfortress.env', override=True)   # <— move to very top / keep here
@@ -132,9 +133,15 @@ def scan_user(user_index, num_users, mode, build, product_id, project_id, report
 
         if any(delta[sect]["added"] or delta[sect]["removed"] or delta[sect]["modified"]
                for sect in ("assets", "meta-data", "alerts")):
+
+            # Build the partial report in the normal template:
+            partial = build_partial_report(new, delta)
+            write_report(CURRENT_PARTIAL_SCAN_FILE, partial, username)
+
             if send:
                 logging.info("[*] Sending diff to dashboard...")
-                send_report_diff(delta, report_url)
+                # send_report_diff(delta, report_url)
+                send_report_diff(partial, report_url)
 
             # overwrite cache with the new full report for next run
             write_report(LAST_SCAN_FILE, new, username)

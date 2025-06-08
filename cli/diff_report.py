@@ -94,3 +94,24 @@ def build_diff_payload(old, new):
       "meta-data": {"added": m_add,    "removed": m_rem,    "modified": m_mod},
       "alerts":    {"added": added,    "removed": removed,  "modified": modified}
     }
+
+def build_partial_report(new_report: dict, delta: dict) -> dict:
+    """
+    Take the full `new_report` and the nested `delta` structure,
+    and return a “partial report” with only the changed objects
+    in the same top‐level lists.
+    """
+    # flatten each section: added + modified + removed
+    assets   = delta["assets"]["added"]   + delta["assets"]["modified"]   + delta["assets"]["removed"]
+    metas    = delta["meta-data"]["added"] + delta["meta-data"]["modified"] + delta["meta-data"]["removed"]
+    alerts   = delta["alerts"]["added"]    + delta["alerts"]["modified"]    + delta["alerts"]["removed"]
+
+    return {
+        "productId":       new_report["productId"],
+        "product_details": new_report["product_details"],
+        "projectId":       new_report["projectId"],
+        "project_details": new_report["project_details"],
+        "assets":          assets,
+        "meta-data":       metas,
+        "alerts":          alerts,
+    }
