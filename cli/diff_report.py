@@ -1,37 +1,96 @@
+"""
+cli/diff_report.py
+
+Load two JSON reports (old & new), compute added/removed/modified entries
+in assets, meta-data, and alerts—**ignoring the 'time' field on alerts**—
+and build a “diff” payload.
+"""
+
 import json
 
 def load_report(path):
+    """Load a JSON report from `path`, or return empty sections if missing."""
     try:
         return json.load(open(path))
     except FileNotFoundError:
-        # First run: no cache yet
         return {"assets": [], "meta-data": [], "alerts": []}
 
-def index_by_id(list_of_objs, id_key):
-    """Build a { id → object } map."""
-    return { obj[id_key]: obj for obj in list_of_objs }
+def _normalize_key(val):
+    """
+    If val is list or dict, JSON-serialize it (sorted keys) to a string.
+    Otherwise convert to string.
+    """
+    if isinstance(val, (list, dict)):
+        return json.dumps(val, sort_keys=True)
+    return str(val)
+
+def index_by_id(items, id_key):
+    """
+    Build a { normalized_id_value → item } map.
+    Uses _normalize_key to ensure hashability.
+    """
+    idx = {}
+    for item in items:
+        raw = item.get(id_key)
+        key = _normalize_key(raw)
+        idx[key] = item
+    return idx
 
 def diff_section(old_list, new_list, id_key):
+    """
+    Compare two lists of dicts by id_key, returning (added, removed, modified).
+    """
     old_idx = index_by_id(old_list, id_key)
     new_idx = index_by_id(new_list, id_key)
 
-    added   = [ new_idx[i] for i in new_idx   if i not in old_idx   ]
-    removed = [ old_idx[i] for i in old_idx   if i not in new_idx   ]
-    # “Modified” = same ID but object differs
+    added =   [ new_idx[k] for k in new_idx if k not in old_idx ]
+    removed = [ old_idx[k] for k in old_idx if k not in new_idx ]
     modified = [
-        new_idx[i] for i in new_idx
-        if i in old_idx and new_idx[i] != old_idx[i]
+        new_idx[k] for k in new_idx
+        if k in old_idx and new_idx[k] != old_idx[k]
     ]
     return added, removed, modified
 
 def build_diff_payload(old, new):
-    a_add, a_rem, a_mod = diff_section(old["assets"], new["assets"], "asset-id")
-    m_add, m_rem, m_mod = diff_section(old["meta-data"], new["meta-data"], "meta-id")
-    alert_add, alert_rem, alert_mod = diff_section(old["alerts"], new["alerts"], "alert_name")
-    # or use an alert-id if you add one
+    """
+    Build a diff payload containing added/removed/modified for each section,
+    but strip out 'time' from alerts before diffing so timestamps don't
+    trigger spurious modifications.
+    """
+    # 1) Assets
+    a_add, a_rem, a_mod = diff_section(
+        old["assets"], new["assets"], "asset-id"
+    )
+
+    # 2) Meta-data
+    m_add, m_rem, m_mod = diff_section(
+        old["meta-data"], new["meta-data"], "meta-id"
+    )
+
+    # 3) Alerts: ignore 'time' differences
+    def key_for_alert(a):
+        # use alert_name + host + port to uniquely identify
+        return f"{a['alert_name']}|{a['host']}|{a['port']}"
+
+    old_map = { key_for_alert(a): a for a in old["alerts"] }
+    new_map = { key_for_alert(a): a for a in new["alerts"] }
+
+    added = [ new_map[k] for k in new_map if k not in old_map ]
+    removed = [ old_map[k] for k in old_map if k not in new_map ]
+
+    # Modified = same key exists and some _other_ field changed
+    modified = []
+    for k in new_map:
+        if k in old_map:
+            old_a, new_a = old_map[k], new_map[k]
+            # compare everything _except_ time
+            o2 = {x: old_a[x] for x in old_a if x != "time"}
+            n2 = {x: new_a[x] for x in new_a if x != "time"}
+            if o2 != n2:
+                modified.append(new_a)
 
     return {
-      "assets":   {"added": a_add,   "removed": a_rem,   "modified": a_mod},
-      "meta-data":{"added": m_add,   "removed": m_rem,   "modified": m_mod},
-      "alerts":   {"added": alert_add,"removed": alert_rem,"modified": alert_mod}
+      "assets":    {"added": a_add,    "removed": a_rem,    "modified": a_mod},
+      "meta-data": {"added": m_add,    "removed": m_rem,    "modified": m_mod},
+      "alerts":    {"added": added,    "removed": removed,  "modified": modified}
     }

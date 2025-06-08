@@ -1,7 +1,7 @@
 import json
 import requests
 
-def send_report(json_path="scan_result.json", url="http://13.61.177.249:8000/register"):
+def send_report(json_path, url):
     try:
         with open(json_path, "r") as f:
             payload = json.load(f)
@@ -17,5 +17,16 @@ def send_report(json_path="scan_result.json", url="http://13.61.177.249:8000/reg
     except Exception as e:
         print(f"[!] Failed to send report: {e}")
 
-if __name__ == "__main__":
-    send_report()
+"""
+cli/send_report.py
+Send a JSON payload (diff or full) to the dashboard API.
+"""
+def send_report_diff(payload, url):
+    """
+    POST `payload` (a dict) as JSON to the given URL.
+    """
+    try:
+        resp = requests.post(url, json=payload)
+        print(f"[+] Sent payload to {url} (status {resp.status_code})")
+    except Exception as e:
+        print(f"[!] Failed to send report: {e}")
