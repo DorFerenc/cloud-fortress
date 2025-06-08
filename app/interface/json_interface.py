@@ -1,10 +1,6 @@
 # Creates output compatible with frontend
 import json
 from datetime import datetime
-import uuid
-
-def generate_id(prefix):
-    return f"{prefix}-{uuid.uuid4().hex[:6]}"
 
 def build_asset(asset_id, name, category, type_, ip="N/A", memory="N/A"):
     return {
@@ -19,7 +15,7 @@ def build_asset(asset_id, name, category, type_, ip="N/A", memory="N/A"):
 def build_meta(asset_id, meta_name, meta_type, desc):
     return {
         "asset-id": asset_id,
-        "meta-id": generate_id("meta"),
+        "meta-id": f"META-{meta_name}-{asset_id}",
         "meta-name": meta_name,
         "type": meta_type,
         "desc": desc
@@ -38,13 +34,12 @@ def build_alert(asset_id, ip, port, host, alert_name, mitre_tactic, mitre_techni
         "time": time
     }
 
-def process_s3_findings(s3_findings, asset_map, username="Unknown"):
+def process_s3_findings(s3_findings, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for s3_finding in s3_findings:
-        asset_id = generate_id("s3_asset")
         bucket_name = s3_finding["bucket_name"]
+        asset_id = f"S3asset-{bucket_name}"
         assets.append(build_asset(asset_id, bucket_name, "storage", "S3 Bucket"))
-        asset_map[bucket_name] = asset_id
 
         meta_data.append(build_meta(asset_id, "User", "User", username))
         meta_data.append(build_meta(asset_id, "Risk Level", "Risk Assessment", s3_finding.get("severity", "Unknown")))
@@ -66,8 +61,8 @@ def process_s3_findings(s3_findings, asset_map, username="Unknown"):
 def process_iam_findings(iam_findings, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for iam in iam_findings:
-        asset_id = generate_id("iam_asset")
         role_name = iam["role_name"]
+        asset_id = f"IAMasset-{role_name}"
         assets.append(build_asset(asset_id, role_name, "identity", "IAM role"))
 
         meta_data.append(build_meta(asset_id, "User", "User", username))
@@ -87,11 +82,11 @@ def process_iam_findings(iam_findings, username="Unknown"):
         ))
     return assets, meta_data, alerts
 
-def process_ec2_findings(ec2_findings, asset_map, username="Unknown"):
+def process_ec2_findings(ec2_findings, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for ec2 in ec2_findings:
         instance_id = ec2["instance_id"]
-        asset_id = asset_map.get(instance_id, generate_id("ec2_asset"))
+        asset_id = f"EC2asset-{instance_id}"
         assets.append(build_asset(asset_id, ec2["name"], "compute", ec2["type"]))
 
         meta_data.append(build_meta(asset_id, "User", "User", username))
@@ -114,8 +109,8 @@ def process_ec2_findings(ec2_findings, asset_map, username="Unknown"):
 def process_sg_findings(sg_findings, username="Unknown"):
     assets, meta_data, alerts = [], [], []
     for sg in sg_findings:
-        asset_id = generate_id("sg_asset")
         group_name = sg.get("group_name", "Unnamed")
+        asset_id = f"SGasset-{group_name}"
         assets.append(build_asset(asset_id, group_name, "network", "Security Group"))
 
         meta_data.append(build_meta(asset_id, "User", "User", username))
@@ -138,7 +133,7 @@ def process_sg_findings(sg_findings, username="Unknown"):
         ))
     return assets, meta_data, alerts
 
-def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, username, PRODUCT_ID, PROJECT_ID):
+def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, username, PRODUCT_ID, PROJECT_ID, file_path):
     """
     Build a structured report for the frontend from findings.
     """
@@ -160,10 +155,8 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, userna
         "alerts": []
     }
 
-    asset_map = {}
-
     # S3
-    s3_assets, s3_meta, s3_alerts = process_s3_findings(s3_findings, asset_map, username)
+    s3_assets, s3_meta, s3_alerts = process_s3_findings(s3_findings, username)
     report["assets"].extend(s3_assets)
     report["meta-data"].extend(s3_meta)
     report["alerts"].extend(s3_alerts)
@@ -175,7 +168,7 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, userna
     report["alerts"].extend(iam_alerts)
 
     # EC2
-    ec2_assets, ec2_meta, ec2_alerts = process_ec2_findings(ec2_findings, asset_map, username)
+    ec2_assets, ec2_meta, ec2_alerts = process_ec2_findings(ec2_findings, username)
     report["assets"].extend(ec2_assets)
     report["meta-data"].extend(ec2_meta)
     report["alerts"].extend(ec2_alerts)
@@ -186,8 +179,8 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, userna
     report["meta-data"].extend(sg_meta)
     report["alerts"].extend(sg_alerts)
 
-    with open("scan_result.json", "w") as file:
+    with open(file_path, "w") as file:
         json.dump(report, file, indent=4)
 
-    print("[+] Report written to scan_result.json")
+    print(f"[+] Report written to {file_path}")
     return json.dumps(report, indent=4)

@@ -2,6 +2,7 @@
 import argparse, sys, os, logging
 from datetime import datetime
 from dotenv import load_dotenv
+import json
 
 # Add the parent directory of the current script to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,60 +42,73 @@ logging.basicConfig(
 )
 
 def main(send=False, mode="mock", build=False):
-    mock_objs = []   # will hold mocks so we can stop() them
-    aws_clients = {} # will hold boto3 clients so we can close() them
-    try:
-        if mode == "mock":
-            logging.info("[*] Setting up simulated (fake) environment...")
-            mock_objs = [
-                setup_mock_s3_environment(),
-                setup_mock_iam_environment(),
-                setup_mock_ec2_environment()
-            ]
-        elif mode == "real":
+    mock_objs = []
+    aws_clients = {}
+    creds_json = os.getenv("AWS_CREDENTIALS_JSON")
+    num_users = 1
+    if creds_json:
+        try:
+            creds = json.loads(creds_json)
+            if isinstance(creds, list):
+                num_users = len(creds)
+        except Exception as e:
+            logging.error(f"Failed to parse AWS_CREDENTIALS_JSON: {e}")
+
+    for user_index in range(num_users):
+        try:
+            if mode == "mock":
+                logging.info("[*] Setting up simulated (fake) environment...")
+                mock_objs = [
+                    setup_mock_s3_environment(),
+                    setup_mock_iam_environment(),
+                    setup_mock_ec2_environment()
+                ]
+            elif mode == "real":
                 logging.info("[*] Connecting to real AWS environment...")
 
-        # get real or mock clients
-        aws_clients = get_aws_clients(os.getenv("AWS_DEFAULT_REGION"),mode)
+            # Pass user_index to get_aws_clients
+            aws_clients = get_aws_clients(os.getenv("AWS_DEFAULT_REGION"), mode, user_index=user_index)
 
-        if mode == "real" and build:
-            build_demo_resources(aws_clients)
+            if mode == "real" and build:
+                build_demo_resources(aws_clients)
 
-        # --- your scanning steps ---
-        s3_findings  = scan_s3_buckets(aws_clients['s3'])
-        iam_findings = scan_iam_roles(aws_clients['iam'])
-        ec2_findings = scan_ec2_instances(aws_clients['ec2'])
-        sg_findings  = scan_security_groups(aws_clients['ec2'])
+            s3_findings  = scan_s3_buckets(aws_clients['s3'])
+            iam_findings = scan_iam_roles(aws_clients['iam'])
+            ec2_findings = scan_ec2_instances(aws_clients['ec2'])
+            sg_findings  = scan_security_groups(aws_clients['ec2'])
+            username = aws_clients['username']
 
-        if PRODUCT_ID == "default-prod-id" or PROJECT_ID == "default-proj-id":
-            logging.error("[!] ERROR: .env file not loaded or missing keys.")
+            if PRODUCT_ID == "default-prod-id" or PROJECT_ID == "default-proj-id":
+                logging.error("[!] ERROR: .env file not loaded or missing keys.")
 
-        logging.info("[*] Generating report...")
-        generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, aws_clients['username'], PRODUCT_ID, PROJECT_ID)
+            logging.info(f"[*] Generating report for user {user_index+1}/{num_users} ({username})...")
 
-        if send:
-            logging.info("[*] Sending report to dashboard...")
-            send_report(url=REPORT_URL)
-    except Exception:
-        logging.exception("[!] Scan failed with exception")
-        logging.error("[!] Please check the logs for more details.", exc_info=True)
-    finally:
-        # 1. Stop moto mocks (if any)
-        for m in mock_objs:
-            try:
-                m.stop()
-            except Exception:
-                pass
+            # Set default path if not provided
+            scan_result_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+            scan_result_path = os.path.abspath(scan_result_path)
+            os.makedirs(scan_result_path, exist_ok=True)
+            file_path = os.path.join(scan_result_path, f"scan_result_{username}.json")
 
-        # 2. Close boto3 clients to release HTTP pool
-        for client in aws_clients.values():
-            # botocore clients have a .close() method
-            try:
-                client.close()
-            except Exception:
-                pass
+            generate_report(s3_findings=s3_findings, iam_findings=iam_findings, ec2_findings=ec2_findings, sg_findings=sg_findings, username=username, PRODUCT_ID=PRODUCT_ID, PROJECT_ID=PROJECT_ID, file_path=file_path)
 
-        logging.info("[*] Cleanup complete.")
+            if send: # option to make this async later
+                logging.info("[*] Sending report to dashboard...")
+                send_report(url=REPORT_URL)
+        except Exception:
+            logging.exception("[!] Scan failed with exception")
+            logging.error("[!] Please check the logs for more details.", exc_info=True)
+        finally:
+            for m in mock_objs:
+                try:
+                    m.stop()
+                except Exception:
+                    pass
+            for client in aws_clients.values():
+                try:
+                    client.close()
+                except Exception:
+                    pass
+            logging.info("[*] Cleanup complete.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

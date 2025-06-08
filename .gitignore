@@ -40,9 +40,15 @@ Thumbs.db
 
 # Logs
 logs/
+*.log
 
 # Python egg
 *.egg-info/
 
 # Generated reports
-scan_result.json
+reports/
+.json
+*.json
+**.json
+
+
