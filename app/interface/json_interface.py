@@ -133,7 +133,7 @@ def process_sg_findings(sg_findings, username="Unknown"):
         ))
     return assets, meta_data, alerts
 
-def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, username, PRODUCT_ID, PROJECT_ID, file_path):
+def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, username, PRODUCT_ID, PROJECT_ID):
     """
     Build a structured report for the frontend from findings.
     """
@@ -179,8 +179,9 @@ def generate_report(s3_findings, iam_findings, ec2_findings, sg_findings, userna
     report["meta-data"].extend(sg_meta)
     report["alerts"].extend(sg_alerts)
 
-    with open(file_path, "w") as file:
-        json.dump(report, file, indent=4)
+    return report
+    # with open(file_path, "w") as file:
+    #     json.dump(report, file, indent=4)
 
-    print(f"[+] Report written to {file_path}")
-    return json.dumps(report, indent=4)
+    # print(f"[+] Report written to {file_path}")
+    # return json.dumps(report, indent=4)
